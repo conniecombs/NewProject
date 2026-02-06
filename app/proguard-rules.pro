@@ -10,3 +10,10 @@
 
 # Room
 -keep class * extends androidx.room.RoomDatabase
+
+# WorkManager
+-keep class * extends androidx.work.Worker
+-keep class * extends androidx.work.CoroutineWorker
+
+# Security Crypto
+-dontwarn com.google.crypto.tink.**

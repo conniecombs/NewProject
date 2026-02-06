@@ -26,14 +26,22 @@ import com.nutritiontracker.ui.navigation.Screen
 import com.nutritiontracker.ui.navigation.bottomNavItems
 import com.nutritiontracker.ui.screens.CameraScreen
 import com.nutritiontracker.ui.screens.DailyTrackerScreen
+import com.nutritiontracker.ui.screens.PrivacyPolicyScreen
+import com.nutritiontracker.ui.screens.SettingsScreen
 import com.nutritiontracker.ui.screens.WeeklyTrackerScreen
 import com.nutritiontracker.ui.theme.NutritionTrackerTheme
 import com.nutritiontracker.viewmodel.CameraViewModel
+import com.nutritiontracker.viewmodel.SettingsViewModel
 import com.nutritiontracker.viewmodel.TrackerViewModel
+import com.nutritiontracker.worker.OfflineAnalysisWorker
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize the offline analysis worker
+        OfflineAnalysisWorker.enqueue(this)
+
         enableEdgeToEdge()
         setContent {
             NutritionTrackerTheme {
@@ -48,6 +56,7 @@ fun NutritionTrackerApp() {
     val navController = rememberNavController()
     val cameraViewModel: CameraViewModel = viewModel()
     val trackerViewModel: TrackerViewModel = viewModel()
+    val settingsViewModel: SettingsViewModel = viewModel()
 
     Scaffold(
         bottomBar = { BottomNavBar(navController) }
@@ -75,6 +84,17 @@ fun NutritionTrackerApp() {
                 }
                 composable(Screen.WeeklyTracker.route) {
                     WeeklyTrackerScreen(viewModel = trackerViewModel)
+                }
+                composable(Screen.Settings.route) {
+                    SettingsScreen(
+                        viewModel = settingsViewModel,
+                        onNavigateToPrivacy = {
+                            navController.navigate(Screen.PrivacyPolicy.route)
+                        }
+                    )
+                }
+                composable(Screen.PrivacyPolicy.route) {
+                    PrivacyPolicyScreen()
                 }
             }
         }
