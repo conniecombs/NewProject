@@ -1,5 +1,6 @@
 package com.nutritiontracker.ui.screens
 
+import android.Manifest
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,7 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -50,12 +54,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 import com.nutritiontracker.data.model.AIProvider
 import com.nutritiontracker.ui.components.NutritionRow
 import com.nutritiontracker.viewmodel.CameraViewModel
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun CameraScreen(
     viewModel: CameraViewModel,
@@ -64,6 +72,9 @@ fun CameraScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    // Camera permission handling with rationale
+    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
     // Temporary file for camera capture
     val photoFile = remember {
@@ -141,17 +152,6 @@ fun CameraScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // API Key input
-        OutlinedTextField(
-            value = uiState.apiKey,
-            onValueChange = { viewModel.setApiKey(it) },
-            label = { Text("API Key (or set in gradle.properties)") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         // Meal type selector
         var mealExpanded by remember { mutableStateOf(false) }
         val mealTypes = listOf("Breakfast", "Lunch", "Dinner", "Snack")
@@ -188,14 +188,54 @@ fun CameraScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        // Camera permission rationale
+        if (!cameraPermissionState.status.isGranted && !uiState.isAnalyzing && uiState.analysisResult == null) {
+            if (cameraPermissionState.status.shouldShowRationale) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Camera Permission Needed",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "The camera is used to take photos of food for nutritional analysis. " +
+                                "Photos are processed locally (resized, metadata removed) before being " +
+                                "sent to the AI service. You can also use the gallery instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
+                            Text("Grant Camera Access")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
         // Camera and gallery buttons
-        if (!uiState.isAnalyzing && uiState.analysisResult == null) {
+        if (!uiState.isAnalyzing && uiState.analysisResult == null && !uiState.saved && !uiState.queued) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
-                    onClick = { cameraLauncher.launch(photoUri) },
+                    onClick = {
+                        if (cameraPermissionState.status.isGranted) {
+                            cameraLauncher.launch(photoUri)
+                        } else {
+                            cameraPermissionState.launchPermissionRequest()
+                        }
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
@@ -226,7 +266,11 @@ fun CameraScreen(
             CircularProgressIndicator(modifier = Modifier.size(48.dp))
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Analyzing food with ${uiState.selectedProvider.displayName}...",
+                text = if (uiState.usingDemoMode) {
+                    "Running demo analysis..."
+                } else {
+                    "Analyzing food with ${uiState.selectedProvider.displayName}..."
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center
             )
@@ -248,14 +292,75 @@ fun CameraScreen(
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(onClick = { viewModel.resetState() }) {
-                Text("Try Again")
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.resetState() },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Try Again")
+                }
+
+                if (uiState.canQueueOffline) {
+                    Button(
+                        onClick = { viewModel.queueForLater() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Save for Later")
+                    }
+                }
+            }
+        }
+
+        // Queued confirmation
+        if (uiState.queued) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Image Queued",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = "This image will be automatically analyzed when your connection is restored.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = { viewModel.resetState() }) {
+                Text("Scan Another")
             }
         }
 
         // Result state
         uiState.analysisResult?.let { result ->
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Demo mode badge
+            if (uiState.usingDemoMode) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text("Demo Mode - Sample Data") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             // Show captured image
             uiState.capturedImageUri?.let { uri ->
@@ -370,7 +475,9 @@ fun CameraScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

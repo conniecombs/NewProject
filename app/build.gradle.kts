@@ -106,6 +106,15 @@ dependencies {
     // Accompanist Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
+    // Encrypted SharedPreferences for secure API key storage
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // WorkManager for background sync
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // ExifInterface for metadata stripping
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
